@@ -84,22 +84,29 @@ mol = SingletSigmaMolecule.from_preset("Rb87Cs133")
 N_MAX = 3
 mol.Nmax = N_MAX
 
-B = np.linspace(50,400,10) * GAUSS #181.699 * GAUSS
+B = 181.699 * GAUSS
 
-INTEN1065 = np.linspace(2, 8, 10) * kWpercm2
 
-INTEN1065_EXPANDED = np.empty((*INTEN1065.shape,3))
-INTEN1065_EXPANDED[..., 0] = INTEN1065
-INTEN1065_EXPANDED[..., 1] = INTEN1065
-INTEN1065_EXPANDED[..., 2] = INTEN1065
+
+INTEN1065 =  3 * kWpercm2 # np.linspace(2, 8, 20) * kWpercm2
+
+# INTEN1065_EXPANDED = np.empty((*INTEN1065.shape,3))
+# INTEN1065_EXPANDED[..., 0] = INTEN1065
+# INTEN1065_EXPANDED[..., 1] = INTEN1065
+# INTEN1065_EXPANDED[..., 2] = INTEN1065
 
 MAGIC817_RATIO = - mol.a02[1065][1]/mol.a02[817][1]
+INTEN817_STEPS = 11
 INTEN817_MAGIC = MAGIC817_RATIO * INTEN1065
+INTEN817_MIN = 0.9 * INTEN817_MAGIC
+INTEN817_MAX = 1.1 * INTEN817_MAGIC
+INTEN817 = np.linspace(INTEN817_MIN, INTEN817_MAX, INTEN817_STEPS)
+MAGIC_INDEX = int((INTEN817_STEPS-1)/2)
 
-INTEN817_EXPANDED = np.empty((*INTEN817_MAGIC.shape,3))
-INTEN817_EXPANDED[..., 0] = 0.95*INTEN817_MAGIC
-INTEN817_EXPANDED[..., 1] = INTEN817_MAGIC
-INTEN817_EXPANDED[..., 2] = 1.05*INTEN817_MAGIC
+# INTEN817_EXPANDED = np.empty((*INTEN817_MAGIC.shape,3))
+# INTEN817_EXPANDED[..., 0] = 0.95*INTEN817_MAGIC
+# INTEN817_EXPANDED[..., 1] = INTEN817_MAGIC
+# INTEN817_EXPANDED[..., 2] = 1.05*INTEN817_MAGIC
 
 settings_string = f'{molecule_name}NMax{mol.Nmax}'
 
@@ -232,21 +239,28 @@ Hac1065 = operators.ac_ham(mol, a02=mol.a02[1065], beta=0)
 Hac817  = operators.ac_ham(mol, a02=mol.a02[817], beta=0)
 
 # Overall Hamiltonian
-Htot = H0 + Hz * B[:, None, None, None, None] + Hac1065 * INTEN1065_EXPANDED[None, :, :, None, None] + Hac817 * INTEN817_EXPANDED[None, :, :, None, None]
+Htot = (
+    H0 
+    + Hz * B#[:, None, None] 
+    + Hac1065 * INTEN1065#[:, None, None] 
+    + Hac817 * INTEN817[:, None, None]
+)
 print(Htot.shape)
 
 # %%
 
 # Solve (diagonalise) Hamiltonians
-# ENERGIES_before, STATES_before = calculate.solve_system(Htot)
+ENERGIES_before, STATES_before = calculate.solve_system(Htot)
 
-eigenenergies_raw, eigenstates_raw = np.linalg.eigh(Htot)
-
-# %%
-eigenenergies, eigenstates = calculate.sort_smooth(eigenenergies_raw, eigenstates_raw)
+# eigenenergies_raw, eigenstates_raw = np.linalg.eigh(Htot)
 
 # %%
-LABELS_D = calculate.label_states(mol, STATES_before[0,0,0], ["N", "MF"], index_repeats=True)
+# eigenenergies, eigenstates = calculate.sort_smooth(eigenenergies_raw, eigenstates_raw)
+
+
+
+# %%
+LABELS_D = calculate.label_states(mol, STATES_before[0], ["N", "MF"], index_repeats=True)
 LABELS_D[:,1] *= 2 # Double MF to guarantee int
 # %%
 # ENERGIES_UNSORTED, STATES_UNSORTED = eigh(H)
@@ -263,14 +277,15 @@ STATES = STATES_before[:,:,canonical_to_energy_map] #[b,uncoupled,coupled]
 
 # %%
 fig,ax = plt.subplots()
-ax.plot(INTEN817,ENERGIES[0:32,:].T)
+ax.plot(INTEN817,ENERGIES[32:128,:].T)
 
 # %%
-# MAGNETIC_MOMENTS = np.einsum('bji,jk,bki->ib', STATES.conj(), -Hz, STATES, optimize='optimal')
+I817_MOMENTS = np.einsum('bji,jk,bki->ib', STATES.conj(), -Hac817, STATES, optimize='optimal')
 
 # %%
-# fig,ax = plt.subplots()
-# ax.plot(B,MAGNETIC_MOMENTS[0:,:].T);
+fig,ax = plt.subplots()
+ax.plot(INTEN817,I817_MOMENTS[:,:].T)
+
 
 # %%
 # dipole_op_zero = calculate.dipole(N_MAX,I1,I2,1,0)
